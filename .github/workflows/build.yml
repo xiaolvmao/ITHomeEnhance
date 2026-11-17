@@ -25,11 +25,19 @@ jobs:
           git clone --depth 1 --recursive https://github.com/theos/theos.git "$THEOS"
 
           # 只取一个 SDK，避免拉整个 sdks 仓库
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git "$THEOS/sdks"
-          cd "$THEOS/sdks"
-          SDK="$(git ls-tree --name-only HEAD | grep -E '^iPhoneOS[0-9]+\.[0-9]+\.sdk$' | sort -V | tail -1)"
-          echo "使用 SDK: $SDK"
-          git sparse-checkout set "$SDK"
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git "$RUNNER_TEMP/sdks"
+          cd "$RUNNER_TEMP/sdks"
+          # 取版本号最大的 SDK（macOS 自带 sort 没有 -V，用 awk 拼补零键）
+          SDK="$(git ls-tree --name-only HEAD \
+                  | grep -E '^iPhoneOS[0-9]+\.[0-9]+\.sdk$' \
+                  | sed 's/^iPhoneOS//; s/\.sdk$//' \
+                  | awk -F. '{printf "%03d%03d %s\n", $1, $2, $0}' \
+                  | sort -n | tail -1 | awk '{print $2}')"
+          echo "使用 SDK: iPhoneOS$SDK.sdk"
+          git sparse-checkout set "iPhoneOS$SDK.sdk"
+          mkdir -p "$THEOS/sdks"
+          rm -rf "$THEOS/sdks/iPhoneOS$SDK.sdk"
+          cp -R "iPhoneOS$SDK.sdk" "$THEOS/sdks/"
 
           chmod +x "$THEOS"/bin/* 2>/dev/null || true
           if [ ! -x "$THEOS/bin/ldid" ]; then
