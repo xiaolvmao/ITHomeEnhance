@@ -30,6 +30,7 @@ BOOL ITXShouldBlockURLString(NSString *urlString) {
             @"gdt.qq.com", @"appsplash", @"umeng", @"umsns", @"umops",
             @"dat.ruanmei.com", @"mmstat.com", @"trace.qq.com",
             @"orbit.jd.com", @"bdsp.x.jd.com", @"puata.info", @"union.ruanmei.com",
+            @"mall.ithome.com", @"shop.asmx", @"getshopsignforios",
         ];
     });
     BOOL maybe = NO;
@@ -73,6 +74,13 @@ BOOL ITXShouldBlockURLString(NSString *urlString) {
         if ([host isEqualToString:@"mi.gdt.qq.com"] || [host isEqualToString:@"v.gdt.qq.com"]) {
             return YES;
         }
+    }
+
+    // ---- 商城模块 ----
+    if (ITXOn(ITXKeyHideMall)) {
+        if ([host isEqualToString:@"mall.ithome.com"]) return YES;
+        if ([host hasSuffix:@"ruanmei.com"] && [path hasPrefix:@"/api/shop.asmx"]) return YES;
+        if ([host isEqualToString:@"napi.ithome.com"] && [path containsString:@"/getshopsignforios"]) return YES;
     }
 
     // ---- 埋点/统计上报 ----

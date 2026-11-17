@@ -1,9 +1,10 @@
 #import "ITXSettingsViewController.h"
 #import "ITXPrefs.h"
 #import "ITXLog.h"
+#import "ITXPerf.h"
 #import "ITXSignIn.h"
 
-static NSString *const kITXVersion = @"1.0.0";
+static NSString *const kITXVersion = @"1.1.0";
 
 #pragma mark - 日志页
 
@@ -114,17 +115,17 @@ static NSString *const kITXVersion = @"1.0.0";
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"增强设置";
-    self.tableView.rowHeight = 62;
+    self.tableView.rowHeight = 68;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
 
-    _sections = @[
-        @{@"title": @"广告净化",
-          @"rows": @[@(ITXKeyLaunchAd), @(ITXKeyFeedAd), @(ITXKeyDetailAd), @(ITXKeyAdHost)]},
-        @{@"title": @"功能增强",
-          @"rows": @[@(ITXKeyAutoSign), @(ITXKeyBlockUpdate), @(ITXKeyBlockJump), @(ITXKeyBlockStats)]},
-        @{@"title": @"其他",
-          @"rows": @[@"log", @"reset"]},
-    ];
+    NSMutableArray<NSDictionary *> *sections = [NSMutableArray array];
+    for (ITXGroup group = ITXGroupAd; group < ITXGroupOther; group++) {
+        [sections addObject:@{@"title": ITXGroupTitle(group),
+                              @"rows": ITXGroupKeys(group)}];
+    }
+    [sections addObject:@{@"title": ITXGroupTitle(ITXGroupOther),
+                          @"rows": @[@"log", @"reset"]}];
+    _sections = sections;
 
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(onPrefsChanged)
@@ -156,7 +157,14 @@ static NSString *const kITXVersion = @"1.0.0";
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     if (section != (NSInteger)_sections.count - 1) return nil;
-    return [NSString stringWithFormat:@"IT之家增强 %@ · 修改即时生效\n自动签到：%@", kITXVersion, ITXSignInStatusText()];
+
+    NSMutableString *footer = [NSMutableString stringWithFormat:@"IT之家增强 %@ · 修改即时生效", kITXVersion];
+    NSTimeInterval cost = ITXPerfLaunchCost();
+    if (cost > 0) {
+        [footer appendFormat:@"\n本次启动首帧 %.0f ms", cost];
+    }
+    [footer appendFormat:@"\n自动签到：%@", ITXSignInStatusText()];
+    return footer;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -177,7 +185,8 @@ static NSString *const kITXVersion = @"1.0.0";
         cell.textLabel.text = ITXKeyTitle(key);
         cell.textLabel.font = [UIFont systemFontOfSize:16];
         cell.detailTextLabel.text = ITXKeyDetail(key);
-        cell.detailTextLabel.font = [UIFont systemFontOfSize:11.5];
+        cell.detailTextLabel.font = [UIFont systemFontOfSize:11];
+        cell.detailTextLabel.numberOfLines = 2;
         cell.detailTextLabel.textColor = [UIColor secondaryLabelColor];
         UISwitch *sw = (UISwitch *)cell.accessoryView;
         sw.tag = key;
@@ -213,7 +222,8 @@ static NSString *const kITXVersion = @"1.0.0";
     if (key == ITXKeyAutoSign && sw.isOn) {
         ITXAutoSignInSchedule();
     }
-    [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:2]
+    // 刷新最后一组的 footer（版本 / 首帧耗时 / 签到状态）
+    [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:(NSInteger)_sections.count - 1]
                   withRowAnimation:UITableViewRowAnimationNone];
 }
 
