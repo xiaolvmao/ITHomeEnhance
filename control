@@ -1,0 +1,9 @@
+Package: com.itx.ithomeenhance
+Name: IT之家增强
+Version: 1.0.0
+Architecture: iphoneos-arm64
+Description: IT之家去广告 / 自动签到 / 功能增强（TrollStore 注入用）
+Maintainer: xiaolvmao
+Author: xiaolvmao
+Section: Tweaks
+Depends: firmware (>= 14.0)

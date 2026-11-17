@@ -1,0 +1,65 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  THEOS_PACKAGE_SCHEME: ""
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Theos
+        run: |
+          set -e
+          export THEOS="$RUNNER_TEMP/theos"
+          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
+          echo "$THEOS/bin" >> "$GITHUB_PATH"
+
+          git clone --depth 1 --recursive https://github.com/theos/theos.git "$THEOS"
+
+          # 只取一个 SDK，避免拉整个 sdks 仓库
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git "$THEOS/sdks"
+          cd "$THEOS/sdks"
+          SDK="$(git ls-tree --name-only HEAD | grep -E '^iPhoneOS[0-9]+\.[0-9]+\.sdk$' | sort -V | tail -1)"
+          echo "使用 SDK: $SDK"
+          git sparse-checkout set "$SDK"
+
+          chmod +x "$THEOS"/bin/* 2>/dev/null || true
+          if [ ! -x "$THEOS/bin/ldid" ]; then
+            brew install ldid || true
+          fi
+
+      - name: 编译
+        run: |
+          set -o pipefail
+          make clean || true
+          make package FINALPACKAGE=1 DEBUG=0 2>&1 | tee build.log
+
+      - name: 收集产物
+        run: |
+          mkdir -p out
+          cp -v packages/*.deb out/ 2>/dev/null || true
+          find .theos -name '*.dylib' -exec cp -v {} out/ \;
+          cd out && zip -j ITHomeEnhance-dylib.zip *.dylib
+          ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ITHomeEnhance
+          path: out/*
+          if-no-files-found: error
+
+      - name: 编译失败时上传日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
