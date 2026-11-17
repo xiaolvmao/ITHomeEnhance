@@ -7,6 +7,10 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /// 命中规则返回 YES
 BOOL ITXShouldBlockURLString(NSString *_Nullable urlString);
 
@@ -15,5 +19,9 @@ NSURL *ITXBlockedURLPlaceholder(void);
 
 /// 把被拦截的请求改写掉；不需要改写时原样返回
 NSURL *_Nullable ITXRewriteURL(NSURL *_Nullable url);
+
+#ifdef __cplusplus
+}
+#endif
 
 NS_ASSUME_NONNULL_END

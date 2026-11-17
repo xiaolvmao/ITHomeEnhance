@@ -6,7 +6,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
+  THEOS: ${{ github.workspace }}/.theos-root
   THEOS_PACKAGE_SCHEME: ""
 
 jobs:
@@ -15,34 +20,47 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Theos 本体做缓存，命中后可以省掉一两分钟的 clone
+      - name: 缓存 Theos
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.THEOS }}
+          key: theos-${{ runner.os }}-${{ hashFiles('.github/workflows/build.yml') }}
+
       - name: 安装 Theos
         run: |
           set -e
-          export THEOS="$RUNNER_TEMP/theos"
-          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
           echo "$THEOS/bin" >> "$GITHUB_PATH"
 
-          git clone --depth 1 --recursive https://github.com/theos/theos.git "$THEOS"
+          if [ -f "$THEOS/makefiles/common.mk" ]; then
+            echo "Theos 已缓存"
+          else
+            rm -rf "$THEOS"
+            git clone --depth 1 --recursive https://github.com/theos/theos.git "$THEOS"
+          fi
 
-          # 只取一个 SDK，避免拉整个 sdks 仓库
-          git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git "$RUNNER_TEMP/sdks"
-          cd "$RUNNER_TEMP/sdks"
-          # 取版本号最大的 SDK（macOS 自带 sort 没有 -V，用 awk 拼补零键）
-          SDK="$(git ls-tree --name-only HEAD \
-                  | grep -E '^iPhoneOS[0-9]+\.[0-9]+\.sdk$' \
-                  | sed 's/^iPhoneOS//; s/\.sdk$//' \
-                  | awk -F. '{printf "%03d%03d %s\n", $1, $2, $0}' \
-                  | sort -n | tail -1 | awk '{print $2}')"
-          echo "使用 SDK: iPhoneOS$SDK.sdk"
-          git sparse-checkout set "iPhoneOS$SDK.sdk"
-          mkdir -p "$THEOS/sdks"
-          rm -rf "$THEOS/sdks/iPhoneOS$SDK.sdk"
-          cp -R "iPhoneOS$SDK.sdk" "$THEOS/sdks/"
+          if ! ls -d "$THEOS"/sdks/iPhoneOS*.sdk >/dev/null 2>&1; then
+            # 只拉一个 SDK：版本号最大的那个
+            git clone --depth 1 --filter=blob:none --sparse https://github.com/theos/sdks.git "$RUNNER_TEMP/sdks"
+            cd "$RUNNER_TEMP/sdks"
+            SDK="$(git ls-tree --name-only HEAD \
+                    | grep -E '^iPhoneOS[0-9]+\.[0-9]+\.sdk$' \
+                    | sed 's/^iPhoneOS//; s/\.sdk$//' \
+                    | awk -F. '{printf "%03d%03d %s\n", $1, $2, $0}' \
+                    | sort -n | tail -1 | awk '{print $2}')"
+            echo "使用 SDK: iPhoneOS$SDK.sdk"
+            git sparse-checkout set "iPhoneOS$SDK.sdk"
+            mkdir -p "$THEOS/sdks"
+            rm -rf "$THEOS/sdks/iPhoneOS$SDK.sdk"
+            cp -R "iPhoneOS$SDK.sdk" "$THEOS/sdks/"
+          fi
 
           chmod +x "$THEOS"/bin/* 2>/dev/null || true
-          if [ ! -x "$THEOS/bin/ldid" ]; then
+          if [ ! -x "$THEOS/bin/ldid" ] && ! command -v ldid >/dev/null 2>&1; then
             brew install ldid || true
           fi
+          echo "THEOS=$THEOS"
+          ls "$THEOS/sdks"
 
       - name: 编译
         run: |

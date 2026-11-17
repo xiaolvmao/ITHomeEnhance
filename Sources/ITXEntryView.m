@@ -74,7 +74,7 @@
     [super layoutSubviews];
     // tableFooterView 的宽度由 table 决定，这里保证至少撑满
     CGFloat width = CGRectGetWidth(self.superview.bounds);
-    if (width > 0 && fabs(CGRectGetWidth(self.frame) - width) > 0.5) {
+    if (width > 0 && CGRectGetWidth(self.frame) != width) {
         CGRect frame = self.frame;
         frame.size.width = width;
         frame.size.height = 68;

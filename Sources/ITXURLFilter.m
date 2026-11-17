@@ -84,7 +84,22 @@ BOOL ITXShouldBlockURLString(NSString *urlString) {
 NSURL *ITXRewriteURL(NSURL *url) {
     if (!url) return nil;
     if (ITXShouldBlockURLString(url.absoluteString)) {
-        ITXLog(@"拦截请求 %@", [url.host stringByAppendingString:url.path ?: @""]);
+        // 同一域名只记前几条，避免刷日志、减少 IO
+        static NSMutableDictionary<NSString *, NSNumber *> *counts;
+        static NSLock *lock;
+        static dispatch_once_t once;
+        dispatch_once(&once, ^{
+            counts = [NSMutableDictionary dictionary];
+            lock = [NSLock new];
+        });
+        NSString *host = url.host ?: @"?";
+        [lock lock];
+        NSInteger n = counts[host].integerValue;
+        counts[host] = @(n + 1);
+        [lock unlock];
+        if (n < 3) {
+            ITXLog(@"拦截请求 %@%@", host, url.path ?: @"");
+        }
         return ITXBlockedURLPlaceholder();
     }
     return url;

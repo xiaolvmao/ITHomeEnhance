@@ -18,6 +18,10 @@ typedef NS_ENUM(NSInteger, ITXKey) {
     ITXKeyBlockStats,     // 关闭统计上报
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 FOUNDATION_EXPORT NSString *const ITXPrefsChangedNotification;
 
 void ITXPrefsRegisterDefaults(void);
@@ -28,5 +32,9 @@ void ITXSetOn(ITXKey key, BOOL on);
 
 NSString *ITXKeyTitle(ITXKey key);
 NSString *ITXKeyDetail(ITXKey key);
+
+#ifdef __cplusplus
+}
+#endif
 
 NS_ASSUME_NONNULL_END

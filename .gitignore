@@ -1,4 +1,5 @@
 .theos/
+.theos-root/
 packages/
 out/
 build.log

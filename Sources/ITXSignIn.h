@@ -8,10 +8,18 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /// App 启动后调用，内部自行延迟，避免和启动期的登录态刷新抢时序
 void ITXAutoSignInSchedule(void);
 
 /// 面板上展示的状态文案
 NSString *ITXSignInStatusText(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 NS_ASSUME_NONNULL_END
