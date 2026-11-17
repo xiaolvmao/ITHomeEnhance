@@ -157,7 +157,7 @@ def main():
         # 重新打包
         if os.path.exists(output):
             os.remove(output)
-        with zipfile.ZipFile(output, "w", zipfile.ZIP_STORED) as z:
+        with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as z:
             for root, _, files in os.walk(workdir):
                 for name in files:
                     full = os.path.join(root, name)

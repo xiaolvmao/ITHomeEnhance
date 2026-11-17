@@ -22,7 +22,25 @@ NSURL *ITXBlockedURLPlaceholder(void) {
 BOOL ITXShouldBlockURLString(NSString *urlString) {
     if (urlString.length < 8) return NO;
 
-    // 只解析一次，避免每个请求都建 NSURL
+    // 热路径：先用字符串预筛，绝大多数正常请求在这里就返回了
+    static NSArray<NSString *> *hints;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        hints = @[
+            @"gdt.qq.com", @"appsplash", @"umeng", @"umsns", @"umops",
+            @"dat.ruanmei.com", @"mmstat.com", @"trace.qq.com",
+            @"orbit.jd.com", @"bdsp.x.jd.com", @"puata.info", @"union.ruanmei.com",
+        ];
+    });
+    BOOL maybe = NO;
+    for (NSString *hint in hints) {
+        if ([urlString rangeOfString:hint].location != NSNotFound) {
+            maybe = YES;
+            break;
+        }
+    }
+    if (!maybe) return NO;
+
     NSURLComponents *comps = [NSURLComponents componentsWithString:urlString];
     NSString *host = comps.host.lowercaseString;
     if (host.length == 0) return NO;

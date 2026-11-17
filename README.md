@@ -68,6 +68,17 @@ make package
 - 自动签到依赖登录态，未登录时只会在日志里留一条失败记录
 - App 版本升级后类名/方法名可能变化，日志里出现「方法不存在」即说明该 hook 已失效
 
+## 还能继续优化的地方
+
+分析 9.52 二进制后整理出的候选，都没写进 1.0.0（改动风险高于收益，先在真机验证现有 hook 更稳妥）：
+
+1. **启动 SDK 初始化**：阿里百川 `AlibcTradeSDK`、京东 Kepler、腾讯播放器、SignalR 长连接都在启动路径上，可以整体推迟到首帧之后，冷启动预计还能省几百毫秒
+2. **阅读计时器**：`ITSignInAutomaticallyManager` 的 `createReadingTimer` / `createActiveWorkItem` 即使不用自动签到也在后台跑，可单独关掉省电
+3. **阅读历史上报**：`ITNewsReadCloud` / `ITUpdateReadHistoryManager` 上报频率偏高，可合并成批量提交
+4. **商城模块**：首页「大家都在买」相关 `RMShopMall*` 模块数据量大，可整块隐藏，首屏能少一次请求
+5. **开屏素材预下载**：`batchDownloadImageAndCache` / `batchDownloadVideoAndCache` 目前跟随开屏开关一起跳过，可拆成独立开关
+6. **图片并发**：弱网下 `SDWebImage` 与 `FSPlayer` 的预加载并发偏高，可调低以降低内存峰值
+
 ## 免责声明
 
 仅供学习与个人设备使用，请勿分发修改后的 IPA。插件只做本地行为调整，不修改任何服务端数据。
