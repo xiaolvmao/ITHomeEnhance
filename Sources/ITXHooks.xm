@@ -89,7 +89,7 @@
 
 - (void)setSwiperAdapter:(id)adapter display:(BOOL)display {
     if (ITXOn(ITXKeyDetailAd)) {
-        self.hidden = YES;
+        ((UIView *)self).hidden = YES;
         return;
     }
     %orig;
@@ -232,7 +232,7 @@ completionHandler:(void (^)(BOOL success))completion {
 - (void)itx_installEnhanceEntry {
     UITableView *table = nil;
     @try {
-        table = [self valueForKey:@"tableView"];
+        table = [(NSObject *)self valueForKey:@"tableView"];
     } @catch (__unused NSException *e) {
     }
     if (![table isKindOfClass:[UITableView class]]) return;
@@ -248,7 +248,7 @@ completionHandler:(void (^)(BOOL success))completion {
     ITXEntryView *entry = [ITXEntryView entryWithHandler:^{
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (strongSelf) {
-            [ITXSettingsViewController openFrom:strongSelf];
+            [ITXSettingsViewController openFrom:(UIViewController *)strongSelf];
         }
     }];
 
