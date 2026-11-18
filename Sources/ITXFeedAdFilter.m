@@ -76,25 +76,49 @@ BOOL ITXObjectIsAd(id obj) {
     return NO;
 }
 
+// 列表里的条目可能被包好几层：container → feedContent、section viewModel → contentModel、
+// 模型盒子 → boxValueData。逐层拆到真正带数据的那一层再判断。
+static id ITXUnwrapFeed(id feed) {
+    id cur = feed;
+    for (int depth = 0; depth < 4; depth++) {
+        if (!cur) return nil;
+        id next = nil;
+        @try {
+            if ([cur respondsToSelector:@selector(feedContent)]) {
+                next = ((id (*)(id, SEL))objc_msgSend)(cur, @selector(feedContent));
+            }
+            if (!next && [cur respondsToSelector:@selector(contentModel)]) {
+                next = ((id (*)(id, SEL))objc_msgSend)(cur, @selector(contentModel));
+            }
+            if (!next && [cur respondsToSelector:@selector(boxValueData)]) {
+                next = ((id (*)(id, SEL))objc_msgSend)(cur, @selector(boxValueData));
+            }
+        } @catch (__unused NSException *e) {
+            return cur;
+        }
+        if (!next || next == cur) return cur;
+        cur = next;
+    }
+    return cur;
+}
+
 BOOL ITXFeedIsAd(id feed) {
     if (!feed) return NO;
     if (ITXObjectIsAd(feed)) return YES;
-
-    // ITFeedFlowContainerModel 把一个具体 feed 包在 feedContent 里
-    if ([feed respondsToSelector:@selector(feedContent)]) {
-        @try {
-            id content = ((id (*)(id, SEL))objc_msgSend)(feed, @selector(feedContent));
-            if (content && content != feed) {
-                return ITXObjectIsAd(content);
-            }
-        } @catch (__unused NSException *e) {
-        }
-    }
-    return NO;
+    id inner = ITXUnwrapFeed(feed);
+    if (!inner || inner == feed) return NO;
+    return ITXObjectIsAd(inner);
 }
 
 NSArray *ITXStripFeedAds(NSArray *list) {
     if (![list isKindOfClass:[NSArray class]] || list.count == 0) return list;
+
+    // 第一次拿到非空列表时留一条痕迹，方便在「运行日志」里确认过滤已接管
+    static BOOL announced;
+    if (!announced) {
+        announced = YES;
+        ITXLog(@"信息流过滤已接管，当前 %lu 条", (unsigned long)list.count);
+    }
 
     NSMutableArray *kept = nil;
     NSMutableArray<NSString *> *removed = nil;
@@ -106,10 +130,7 @@ NSArray *ITXStripFeedAds(NSArray *list) {
             }
             NSString *title = ITXStringFromObject(obj, @"title");
             if (title.length == 0) {
-                @try {
-                    title = ITXStringFromObject([obj valueForKey:@"feedContent"], @"title");
-                } @catch (__unused NSException *e) {
-                }
+                title = ITXStringFromObject(ITXUnwrapFeed(obj), @"title");
             }
             if (!removed) removed = [NSMutableArray array];
             [removed addObject:title.length ? title : @"(无标题)"];
