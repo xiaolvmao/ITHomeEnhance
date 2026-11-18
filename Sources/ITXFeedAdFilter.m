@@ -8,7 +8,7 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 
-// 已知的推广落地页 host，作为 isAd 没标出来时的兜底判断
+// 已知的推广落地页 host，作为标记字段没命中的兜底判断
 static NSArray<NSString *> *ITXPromotionHosts(void) {
     static NSArray<NSString *> *hosts;
     static dispatch_once_t once;
@@ -40,24 +40,62 @@ static NSString *ITXStringFromObject(id obj, NSString *key) {
     return nil;
 }
 
+// App 里广告标记的命名并不统一：
+//   RMNewsArticleModel      -> isAdvertise（首页信息流真正用的模型）
+//   ITNewsModel / Feed      -> isAd
+//   ITLaunchAdModel         -> isad（小写 d）
+//   Feed                    -> isDaogou（辣品导购，首页同样是推广位）
+static NSArray<NSString *> *ITXAdFlagNames(void) {
+    static NSArray<NSString *> *names;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        names = @[@"isAdvertise", @"isAd", @"isad", @"isDaogou"];
+    });
+    return names;
+}
+
+// 有些推广位只在标签上体现（角标文案），兜底扫一遍标签
+static BOOL ITXLabelsMarkAd(id obj) {
+    static NSArray<NSString *> *labelKeys;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        labelKeys = @[@"feedLabels", @"listTags", @"smallTags"];
+    });
+
+    for (NSString *key in labelKeys) {
+        id value = nil;
+        @try {
+            value = [obj valueForKey:key];
+        } @catch (__unused NSException *e) {
+            continue;
+        }
+        if (![value isKindOfClass:[NSArray class]]) continue;
+
+        for (id item in (NSArray *)value) {
+            NSString *text = nil;
+            if ([item isKindOfClass:[NSString class]]) {
+                text = item;
+            } else {
+                text = ITXStringFromObject(item, @"title");
+                if (text.length == 0) text = ITXStringFromObject(item, @"name");
+            }
+            if (text.length == 0 || text.length > 8) continue;
+            if ([text containsString:@"广告"] || [text containsString:@"推广"] || [text containsString:@"赞助"]) {
+                return YES;
+            }
+            if ([[text uppercaseString] isEqualToString:@"AD"]) return YES;
+        }
+    }
+    return NO;
+}
+
 BOOL ITXObjectIsAd(id obj) {
     if (!obj) return NO;
 
-    // ITNewsModel / Feed / RMNewsCarouseFeedItemModel 上的广告标记。
-    // isAd 是服务端直接下发的；isDaogou 是「辣品导购」这类带货条目，
-    // 在首页同样是推广位，一并处理。
-    static SEL sIsAd, sIsDaogou;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        sIsAd = sel_registerName("isAd");
-        sIsDaogou = sel_registerName("isDaogou");
-    });
-
     // 用 respondsToSelector 而不是读 ivar，免得漏掉声明在父类上的情况
-    SEL flags[2] = {sIsAd, sIsDaogou};
-    for (int i = 0; i < 2; i++) {
-        SEL sel = flags[i];
-        if (!sel || ![obj respondsToSelector:sel]) continue;
+    for (NSString *name in ITXAdFlagNames()) {
+        SEL sel = sel_registerName(name.UTF8String);
+        if (![obj respondsToSelector:sel]) continue;
         @try {
             BOOL flag = ((BOOL (*)(id, SEL))objc_msgSend)(obj, sel);
             if (flag) return YES;
@@ -65,8 +103,11 @@ BOOL ITXObjectIsAd(id obj) {
         }
     }
 
+    if (ITXLabelsMarkAd(obj)) return YES;
+
     // 兜底：链接指向已知推广域名
     NSString *link = ITXStringFromObject(obj, @"link");
+    if (link.length == 0) link = ITXStringFromObject(obj, @"shareUrl");
     if (link.length > 6) {
         NSString *lower = link.lowercaseString;
         for (NSString *host in ITXPromotionHosts()) {
@@ -113,11 +154,19 @@ BOOL ITXFeedIsAd(id feed) {
 NSArray *ITXStripFeedAds(NSArray *list) {
     if (![list isKindOfClass:[NSArray class]] || list.count == 0) return list;
 
-    // 第一次拿到非空列表时留一条痕迹，方便在「运行日志」里确认过滤已接管
+    // 第一次拿到非空列表时留一条痕迹，方便在「运行日志」里确认过滤已接管；
+    // 顺带记一下实际进来的模型类名，万一还有漏网的广告，凭这条就能定位。
     static BOOL announced;
     if (!announced) {
         announced = YES;
-        ITXLog(@"信息流过滤已接管，当前 %lu 条", (unsigned long)list.count);
+        NSMutableOrderedSet *classes = [NSMutableOrderedSet orderedSet];
+        for (id obj in list) {
+            [classes addObject:NSStringFromClass([obj class])];
+            if (classes.count >= 8) break;
+        }
+        ITXLog(@"信息流过滤已接管，%lu 条，类型：%@",
+               (unsigned long)list.count,
+               [[classes array] componentsJoinedByString:@", "]);
     }
 
     NSMutableArray *kept = nil;
@@ -128,12 +177,12 @@ NSArray *ITXStripFeedAds(NSArray *list) {
             if (!kept) {
                 kept = [NSMutableArray arrayWithArray:[list subarrayWithRange:NSMakeRange(0, index)]];
             }
-            NSString *title = ITXStringFromObject(obj, @"title");
-            if (title.length == 0) {
-                title = ITXStringFromObject(ITXUnwrapFeed(obj), @"title");
-            }
+            id inner = ITXUnwrapFeed(obj);
+            NSString *title = ITXStringFromObject(inner, @"title");
+            if (title.length == 0) title = ITXStringFromObject(obj, @"title");
             if (!removed) removed = [NSMutableArray array];
-            [removed addObject:title.length ? title : @"(无标题)"];
+            [removed addObject:[NSString stringWithFormat:@"%@(%@)", title.length ? title : @"无标题",
+                                NSStringFromClass([(inner ?: obj) class])]];
         } else if (kept) {
             [kept addObject:obj];
         }
@@ -141,7 +190,7 @@ NSArray *ITXStripFeedAds(NSArray *list) {
     }
 
     if (removed.count > 0) {
-        // 列表刷新很频繁，合并成一条日志，只列前三条标题
+        // 列表刷新很频繁，合并成一条日志，只列前三条
         NSString *sample = [[removed subarrayWithRange:NSMakeRange(0, MIN(removed.count, 3))]
             componentsJoinedByString:@" | "];
         ITXLog(@"剔除 %lu 条信息流广告：%@", (unsigned long)removed.count, sample);

@@ -9,7 +9,7 @@
 | 分组 | 开关 | 做法 |
 | --- | --- | --- |
 | 广告净化 | 去掉开屏广告 | 跳过 `ITLaunchAdManager.setupITLaunchAd`，同时拦截 `napi.ithome.com/api/appsplash/get` |
-| | 去掉信息流广告 | 服务端下发的广告条目（`ITNewsModel.isAd`）在交给 IGListKit 前从数组里剔除；同时 `NSListADInfoManager` 的插入接口一律返回 NO |
+| | 去掉信息流广告 | 服务端按固定间隔下发的广告条目（`RMNewsArticleModel.isAdvertise` / `ITNewsModel.isAd`）在交给 IGListKit 前从数组里剔除；另有两道兜底网：`ITFeedFlowViewModel.isFilterOutFeed:` 与 section 高度置零；`NSListADInfoManager` 的插入接口一律返回 NO |
 | | 去掉文章页广告 | `RMNewsDetailWebADView` 不显示，广告位数据源直接返回 0 条 |
 | | 拦截广告域名 | 广点通 `mi.gdt.qq.com`、`union.ruanmei.com` 等请求在构造阶段改写到本地占位地址，立即失败 |
 | 功能增强 | 自动签到 | 驱动 App 自带的 `ITSignInAutomaticallyCenter`，并放行 `isSatisfyTaskCompletion`；失败时回退到 `usersign/autosign` 接口 |
@@ -64,8 +64,10 @@ make package
 
 - `ITLaunchAdManager` / `NSADInfoManager` —— 开屏广告加载、播放与素材预下载
 - `NSListADInfoManager` —— 列表广告投放（含广点通 / InMobi / 京东 / 阿里妈妈四路数据）
+- `RMNewsArticleModel` / `ITNewsModel` / `Feed` —— 信息流条目，广告标记分别是 `isAdvertise` / `isAd` / `isAd`
 - `ITNewsModel` / `RMNewsCarouseFeedItemModel` —— 带 `isAd` 标记的信息流条目与轮播位
-- `ITFeedFlowViewController` / `_TtC11RMKernelKit25FeedListAdapterDataSource` —— 列表交给 IGListKit 的出口
+- `ITFeedFlowViewController` / `_TtC11RMKernelKit25FeedListAdapterDataSource` / `ITListAdapterViewController` —— 列表交给 IGListKit 的出口
+- `RMNewsHomeArticleSectionController` —— 单条新闻的 section 控制器（兜底压高度用）
 - `RMNewsDetailWebADView(Adapter)` —— 正文广告位
 - `ITSignInAutomaticallyCenter` / `ITSignInAutomaticallyManager` —— 原生自动签到与阅读计时
 - `ITUpdateReadHistoryManager` —— 阅读历史上报
@@ -77,7 +79,16 @@ make package
 
 首页穿插在新闻之间的广告有两条来源：一条是本地广告 SDK（`NSListADInfoManager` 决定插几条、插在哪），另一条是服务端直接下发、带 `isAd=YES` 的 `ITNewsModel`，它和普通新闻混在同一个数组里，压根不经过广告管理器。只拦前者，服务端投放的广告照样出现。
 
-所以真正的拦截点放在「数组交给 IGListKit 之前」：`objectsForListAdapter:` 的返回值过一遍 `ITXStripFeedAds()`，命中 `isAd` / `isDaogou` / 推广域名就剔除。没有广告时函数原样返回同一个数组对象，不产生额外分配。
+所以真正的拦截点放在「数组交给 IGListKit 之前」：`objectsForListAdapter:` 的返回值过一遍 `ITXStripFeedAds()`。没有广告时函数原样返回同一个数组对象，不产生额外分配。
+
+判定条件有四种，命中任一即剔除：
+
+- `isAdvertise`（`RMNewsArticleModel`，首页信息流实际用的是这个类）
+- `isAd`（`ITNewsModel` / `Feed`）、`isad`（`ITLaunchAdModel`）
+- `isDaogou`（辣品导购，首页同属推广位）
+- 标签文案含「广告 / 推广 / 赞助」或等于 `AD`，以及 `link` / `shareUrl` 落在已知推广域名
+
+三道网依次是：数组出口清洗 → `ITFeedFlowViewModel.isFilterOutFeed:` 返回 YES → `RMNewsHomeArticleSectionController` 的 `sizeForItemAtIndex:` 返回 `CGSizeZero`。
 
 ### 延迟初始化怎么做到不递归
 

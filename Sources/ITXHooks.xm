@@ -124,6 +124,47 @@
 
 %end
 
+// App 自己的过滤通道。这个方法的返回值语义静态确认不了（返回 YES 是「过滤掉」还是
+// 「保留」看不出来），但只在我们认定是广告时返回 YES：
+//   - 若是「过滤掉」 -> 广告被丢掉，符合预期
+//   - 若是「保留」   -> 广告被保留，等同于没改，不会误伤正常条目
+// 两种语义下都不会把列表搞坏，所以放心加成第二道网。
+%hook ITFeedFlowViewModel
+
+- (BOOL)isFilterOutFeed:(id)feed {
+    if (ITXOn(ITXKeyFeedAd) && ITXFeedIsAd(feed)) return YES;
+    return %orig;
+}
+
+%end
+
+// 第三道网：万一广告还是进了列表，把它的高度压成 0，至少不会显示出来。
+// 文章 section 一条新闻一个 section，尺寸在这里算。
+%hook RMNewsHomeArticleSectionController
+
+- (void)didUpdateToObject:(id)object {
+    %orig;
+    static BOOL logged;
+    if (!logged) {
+        logged = YES;
+        ITXLog(@"信息流 section 对象类型：%@", NSStringFromClass([object class]));
+    }
+}
+
+- (CGSize)sizeForItemAtIndex:(NSInteger)index {
+    if (ITXOn(ITXKeyFeedAd)) {
+        id model = nil;
+        @try {
+            model = [self valueForKey:@"articleModel"];
+        } @catch (__unused NSException *e) {
+        }
+        if (model && ITXFeedIsAd(model)) return CGSizeZero;
+    }
+    return %orig;
+}
+
+%end
+
 // 顶部轮播里的推广位：focusNewsData 是 RMNewsCarouseFeedItemModel 数组
 %hook RMNewsSwiperFeedModel
 
