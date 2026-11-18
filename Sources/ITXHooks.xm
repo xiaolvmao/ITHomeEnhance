@@ -153,9 +153,11 @@
 
 - (CGSize)sizeForItemAtIndex:(NSInteger)index {
     if (ITXOn(ITXKeyFeedAd)) {
+        // self 在这个编译单元里只是前向声明，先落成 id 再发消息
+        id slf = (id)self;
         id model = nil;
         @try {
-            model = [self valueForKey:@"articleModel"];
+            model = [slf valueForKey:@"articleModel"];
         } @catch (__unused NSException *e) {
         }
         if (model && ITXFeedIsAd(model)) return CGSizeZero;
