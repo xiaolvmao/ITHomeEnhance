@@ -11,6 +11,7 @@
 #import "ITXPrefs.h"
 #import "ITXLog.h"
 #import "ITXURLFilter.h"
+#import "ITXFeedAdFilter.h"
 #import "ITXSignIn.h"
 #import "ITXPerf.h"
 #import "ITXEntryView.h"
@@ -88,7 +89,54 @@
 
 #pragma mark - 信息流广告
 
-// 列表里的推广卡片由 NSListADInfoManager 决定要不要插、插几条
+// 首页穿插在新闻之间的广告是服务端下发的 ITNewsModel（isAd=YES），
+// 列表装配时直接混进同一个数组，不会经过 NSListADInfoManager，
+// 所以真正的拦截点在「交给 IGListKit 之前」把数组洗一遍。
+%hook ITFeedFlowViewController
+
+- (NSArray *)objectsForListAdapter:(id)adapter {
+    NSArray *list = %orig;
+    if (ITXOn(ITXKeyFeedAd)) return ITXStripFeedAds(list);
+    return list;
+}
+
+%end
+
+// 有些页面把数据源转交给内核层的 Swift 实现，这里再洗一次（幂等）
+%hook _TtC11RMKernelKit25FeedListAdapterDataSource
+
+- (NSArray *)objectsForListAdapter:(id)adapter {
+    NSArray *list = %orig;
+    if (ITXOn(ITXKeyFeedAd)) return ITXStripFeedAds(list);
+    return list;
+}
+
+%end
+
+// 基类兜底：个别栏目页直接用 ITListAdapterViewController，没走 FeedFlow 那套
+%hook ITListAdapterViewController
+
+- (NSArray *)objectsForListAdapter:(id)adapter {
+    NSArray *list = %orig;
+    if (ITXOn(ITXKeyFeedAd)) return ITXStripFeedAds(list);
+    return list;
+}
+
+%end
+
+// 顶部轮播里的推广位：focusNewsData 是 RMNewsCarouseFeedItemModel 数组
+%hook RMNewsSwiperFeedModel
+
+- (NSArray *)focusNewsData {
+    NSArray *data = %orig;
+    if (ITXOn(ITXKeyFeedAd)) return ITXStripFeedAds(data);
+    return data;
+}
+
+%end
+
+// 列表里的推广卡片由 NSListADInfoManager 决定要不要插、插几条。
+// 和上面的条目级过滤互不依赖，两处都拦更稳。
 %hook NSListADInfoManager
 
 - (BOOL)hasAdByType:(id)type {

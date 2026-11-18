@@ -9,7 +9,7 @@
 | 分组 | 开关 | 做法 |
 | --- | --- | --- |
 | 广告净化 | 去掉开屏广告 | 跳过 `ITLaunchAdManager.setupITLaunchAd`，同时拦截 `napi.ithome.com/api/appsplash/get` |
-| | 去掉信息流广告 | `NSListADInfoManager` 的 `hasAdByType:` / `hasOtherAdByType:` 一律返回 NO，广告数据不再装载 |
+| | 去掉信息流广告 | 服务端下发的广告条目（`ITNewsModel.isAd`）在交给 IGListKit 前从数组里剔除；同时 `NSListADInfoManager` 的插入接口一律返回 NO |
 | | 去掉文章页广告 | `RMNewsDetailWebADView` 不显示，广告位数据源直接返回 0 条 |
 | | 拦截广告域名 | 广点通 `mi.gdt.qq.com`、`union.ruanmei.com` 等请求在构造阶段改写到本地占位地址，立即失败 |
 | 功能增强 | 自动签到 | 驱动 App 自带的 `ITSignInAutomaticallyCenter`，并放行 `isSatisfyTaskCompletion`；失败时回退到 `usersign/autosign` 接口 |
@@ -64,12 +64,20 @@ make package
 
 - `ITLaunchAdManager` / `NSADInfoManager` —— 开屏广告加载、播放与素材预下载
 - `NSListADInfoManager` —— 列表广告投放（含广点通 / InMobi / 京东 / 阿里妈妈四路数据）
+- `ITNewsModel` / `RMNewsCarouseFeedItemModel` —— 带 `isAd` 标记的信息流条目与轮播位
+- `ITFeedFlowViewController` / `_TtC11RMKernelKit25FeedListAdapterDataSource` —— 列表交给 IGListKit 的出口
 - `RMNewsDetailWebADView(Adapter)` —— 正文广告位
 - `ITSignInAutomaticallyCenter` / `ITSignInAutomaticallyManager` —— 原生自动签到与阅读计时
 - `ITUpdateReadHistoryManager` —— 阅读历史上报
 - `AppDelegate` / `ITSignalRBasisManager` / `TXLiveBase` —— 启动路径上的第三方 SDK
 - `ITShopMallCentral` / `ITFeedFlowProductTopSectionController` —— 商城模块与首页商品卡
 - `ITSettingViewController` —— 设置页（入口挂在其 `tableView.tableFooterView` 上）
+
+### 信息流广告为什么不能只 hook 广告管理器
+
+首页穿插在新闻之间的广告有两条来源：一条是本地广告 SDK（`NSListADInfoManager` 决定插几条、插在哪），另一条是服务端直接下发、带 `isAd=YES` 的 `ITNewsModel`，它和普通新闻混在同一个数组里，压根不经过广告管理器。只拦前者，服务端投放的广告照样出现。
+
+所以真正的拦截点放在「数组交给 IGListKit 之前」：`objectsForListAdapter:` 的返回值过一遍 `ITXStripFeedAds()`，命中 `isAd` / `isDaogou` / 推广域名就剔除。没有广告时函数原样返回同一个数组对象，不产生额外分配。
 
 ### 延迟初始化怎么做到不递归
 

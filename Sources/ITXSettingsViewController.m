@@ -4,7 +4,7 @@
 #import "ITXPerf.h"
 #import "ITXSignIn.h"
 
-static NSString *const kITXVersion = @"1.1.0";
+static NSString *const kITXVersion = @"1.2.0";
 
 #pragma mark - 日志页
 
